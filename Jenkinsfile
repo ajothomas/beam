@@ -18,14 +18,7 @@
  */
 
 pipeline {
-  agent {
-    dockerfile {
-      dir 'build-image'
-      args """\
-           -v /home/jenkins:/home/jenkins
-           """
-    }
-  }
+  agent { docker 'openjdk:8-jdk' }
 
   environment {
     // create one gradle cache per executor
