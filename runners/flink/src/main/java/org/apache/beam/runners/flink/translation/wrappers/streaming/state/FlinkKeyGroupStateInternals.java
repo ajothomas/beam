@@ -57,8 +57,6 @@ import org.apache.flink.util.Preconditions;
  * {@link StateInternals} that uses {@link KeyGroupCheckpointedOperator} to checkpoint state.
  *
  * <p>Note: Ignore index of key. Just implement BagState.
- *
- * <p>Reference from {@link HeapInternalTimerService} to the local key-group range.
  */
 public class FlinkKeyGroupStateInternals<K> implements StateInternals {
 
