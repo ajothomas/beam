@@ -20,6 +20,10 @@
 pipeline {
   agent { docker 'openjdk:8-jdk' }
 
+  environment {
+    GRADLE_OPTS=-Dgradle.user.home=/tmp
+  }
+
   stages {
     stage('Fetch Tags') {
       steps {
@@ -37,7 +41,6 @@ pipeline {
 
     stage('Clean') {
       steps {
-        sh "export GRADLE_OPTS=-Dgradle.user.home=/tmp"
         sh "export"
         sh "./gradlew clean --stacktrace"
       }
