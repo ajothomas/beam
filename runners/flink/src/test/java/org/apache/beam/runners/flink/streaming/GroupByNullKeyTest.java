@@ -90,16 +90,16 @@ public class GroupByNullKeyTest extends AbstractTestBase implements Serializable
 
     PCollection<String> output =
         p.apply(
-            Create.of(
-                Arrays.asList(
-                    KV.of(0, "user1"),
-                    KV.of(1, "user1"),
-                    KV.of(2, "user1"),
-                    KV.of(10, "user2"),
-                    KV.of(1, "user2"),
-                    KV.of(15000, "user2"),
-                    KV.of(12000, "user2"),
-                    KV.of(25000, "user3"))))
+                Create.of(
+                    Arrays.asList(
+                        KV.of(0, "user1"),
+                        KV.of(1, "user1"),
+                        KV.of(2, "user1"),
+                        KV.of(10, "user2"),
+                        KV.of(1, "user2"),
+                        KV.of(15000, "user2"),
+                        KV.of(12000, "user2"),
+                        KV.of(25000, "user3"))))
             .apply(ParDo.of(new ExtractUserAndTimestamp()))
             .apply(
                 Window.<String>into(FixedWindows.of(Duration.standardHours(1)))
