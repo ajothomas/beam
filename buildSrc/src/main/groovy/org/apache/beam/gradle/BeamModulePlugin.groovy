@@ -833,8 +833,8 @@ artifactId=${project.name}
                       + 'maven-customerknowledgeplatform-apache-beam-local'
                       : 'https://repository.apache.org/content/repositories/snapshots')
               credentials {
-                username = System.getenv()['ARTIFACTORY_USER']
-                password = System.getenv()['ARTIFACTORY_PASS']
+                username = System.getenv()['ORG_GRADLE_PROJECT_ARTIFACTORY_USER']
+                password = System.getenv()['ORG_GRADLE_PROJECT_ARTIFACTORY_PASS']
               }
             }
           }

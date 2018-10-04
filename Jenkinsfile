@@ -27,31 +27,31 @@ pipeline {
   }
 
   stages {
-      stage('Build , Publish to artifactory') {
-        steps {
-          script {
-            checkout scm
-            sh 'env'
-            List<String> buildOptions = [
-                      './gradlew',
-                      'publish',
-                      '-PisRelease',
-                      '-PnoSigning=true',
-                      '--no-daemon',
-                      '--no-parallel'
-                    ]
-            String buildCmd = "${buildOptions.join(' ')} --stacktrace"
-            echo "Build Command: $buildCmd"
-            withCredentials([usernamePassword(credentialsId: 'effort_artifactory_user', passwordVariable: 'GRGIT_PASS', usernameVariable: 'GRGIT_USER')])
+    stage('Build , Publish to artifactory') {
+      steps {
+        script {
+          checkout scm
+          sh 'env'
+          List<String> buildOptions = [
+                    './gradlew',
+                    'publish',
+                    '-PisRelease',
+                    '-PnoSigning=true',
+                    '--no-daemon',
+                    '--no-parallel'
+                  ]
+          String buildCmd = "${buildOptions.join(' ')} --stacktrace"
+          echo "Build Command: $buildCmd"
+          withCredentials([usernamePassword(credentialsId: 'effort_artifactory_user', passwordVariable: 'GRGIT_PASS', usernameVariable: 'GRGIT_USER')])
+          {
+            withEnv(["ORG_GRADLE_PROJECT_ARTIFACTORY_PASS=${env.GRGIT_PASS}",
+                     "ORG_GRADLE_PROJECT_ARTIFACTORY_USER=${env.GRGIT_USER}"])
             {
-              withEnv(["ORG_GRADLE_PROJECT_ARTIFACTORY_PASS=${env.GRGIT_PASS}",
-                       "ORG_GRADLE_PROJECT_ARTIFACTORY_USER=${env.GRGIT_USER}"])
-              {
-                sh "$buildCmd"
-              }
+              sh "$buildCmd"
             }
           }
         }
       }
     }
+  }
 }
