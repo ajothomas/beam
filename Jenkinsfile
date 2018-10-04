@@ -18,18 +18,13 @@
  */
 
 pipeline {
-  agent {
-    dockerfile {
-     dir 'build-image'
-     args """\
-          -v /var/run/docker.sock:/var/run/docker.sock
-          -v /home/jenkins:/home/jenkins
-          """
-    }
+
+  agent { dockerfile true }
   }
 
   environment {
     GRADLE_OPTS='-Dgradle.user.home=/tmp'
+    HOME = '/tmp/'
   }
 
   stages {
