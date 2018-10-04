@@ -18,7 +18,7 @@
  */
 
 pipeline {
-  agent { docker 'openjdk:8-jdk' }
+  agent { dockerfile true }
 
   environment {
     GRADLE_OPTS='-Dgradle.user.home=/tmp'
