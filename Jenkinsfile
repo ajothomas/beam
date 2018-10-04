@@ -20,11 +20,6 @@
 pipeline {
   agent { docker 'openjdk:8-jdk' }
 
-  environment {
-    // create one gradle cache per executor
-    GRADLE_USER_HOME = "/home/jenkins/.gradle_${env.EXECUTOR_NUMBER}"
-  }
-
   stages {
     stage('Fetch Tags') {
       steps {
