@@ -37,6 +37,7 @@ pipeline {
 
     stage('Clean') {
       steps {
+        sh "export GRADLE_OPTS=-Dgradle.user.home=/tmp"
         sh "export"
         sh "./gradlew clean --stacktrace"
       }
