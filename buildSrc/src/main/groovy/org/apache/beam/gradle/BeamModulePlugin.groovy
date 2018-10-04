@@ -232,7 +232,7 @@ class BeamModulePlugin implements Plugin<Project> {
 
     // Automatically use the official release version if we are performing a release
     // otherwise append '-SNAPSHOT'
-    project.version = '2.7.0gd0'
+    project.version = '2.7.0'
     if (!isRelease(project)) {
       project.version += '-SNAPSHOT'
     }
@@ -829,7 +829,8 @@ artifactId=${project.name}
           repositories {
             maven {
               url(project.properties['distMgmtSnapshotsUrl'] ?: isRelease(project)
-                      ? 'https://artifactory.secureserver.net/artifactory/maven-customerknowledgeplatform-apache-beam-local'
+                      ? 'https://artifactory.secureserver.net/artifactory/'
+                      + 'maven-customerknowledgeplatform-apache-beam-local'
                       : 'https://repository.apache.org/content/repositories/snapshots')
               credentials {
                 username = System.getenv()['ARTIFACTORY_USER']
@@ -837,6 +838,7 @@ artifactId=${project.name}
               }
             }
           }
+
           publications {
             mavenJava(MavenPublication) {
               artifact project.shadowJar
