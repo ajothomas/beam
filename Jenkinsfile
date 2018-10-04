@@ -20,7 +20,6 @@
 pipeline {
 
   agent { dockerfile true }
-  }
 
   environment {
     GRADLE_OPTS='-Dgradle.user.home=/tmp'
