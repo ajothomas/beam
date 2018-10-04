@@ -94,7 +94,7 @@ pipeline {
               "files": [
                 {
                   "pattern": "build/libs/*",
-                  "target": "maven-customerknowledgeplatform-spanner-io-local"
+                  "target": "maven-customerknowledgeplatform-apache-beam-local"
                 }
               ]
             }"""
