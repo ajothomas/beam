@@ -21,7 +21,7 @@ pipeline {
   agent { docker 'openjdk:8-jdk' }
 
   environment {
-    GRADLE_OPTS=-Dgradle.user.home=/tmp
+    GRADLE_OPTS='-Dgradle.user.home=/tmp'
   }
 
   stages {
