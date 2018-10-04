@@ -17,8 +17,6 @@
  * limitations under the License.
  */
 
-@Library('ECM@master') _
-
 pipeline {
   agent {
     dockerfile {
