@@ -33,12 +33,15 @@ import org.apache.beam.sdk.transforms.windowing.Sessions;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
-import org.apache.flink.streaming.util.StreamingProgramTestBase;
+import org.apache.flink.test.util.AbstractTestBase;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
 /** Session window test. */
-public class TopWikipediaSessionsTest extends StreamingProgramTestBase implements Serializable {
+public class TopWikipediaSessionsTest extends AbstractTestBase implements Serializable {
 
   protected String resultDir;
   protected String resultPath;
@@ -47,16 +50,16 @@ public class TopWikipediaSessionsTest extends StreamingProgramTestBase implement
 
   static final String[] EXPECTED_RESULT =
       new String[] {
-        "user: user1 value:3",
-        "user: user1 value:1",
-        "user: user2 value:4",
-        "user: user2 value:6",
-        "user: user3 value:7",
-        "user: user3 value:2"
+          "user: user1 value:3",
+          "user: user1 value:1",
+          "user: user2 value:4",
+          "user: user2 value:6",
+          "user: user3 value:7",
+          "user: user3 value:2"
       };
 
-  @Override
-  protected void preSubmit() throws Exception {
+  @Before
+  public void preSubmit() throws Exception {
     // Beam Write will add shard suffix to fileName, see ShardNameTemplate.
     // So tempFile need have a parent to compare.
     File resultParent = createAndRegisterTempFile("result");
@@ -64,13 +67,13 @@ public class TopWikipediaSessionsTest extends StreamingProgramTestBase implement
     resultPath = new File(resultParent, "file.txt").getAbsolutePath();
   }
 
-  @Override
-  protected void postSubmit() throws Exception {
+  @After
+  public void postSubmit() throws Exception {
     compareResultsByLinesInMemory(Joiner.on('\n').join(EXPECTED_RESULT), resultDir);
   }
 
-  @Override
-  protected void testProgram() throws Exception {
+  @Test
+  public void testProgram() throws Exception {
 
     Pipeline p = FlinkTestPipeline.createForStreaming();
 
@@ -78,67 +81,67 @@ public class TopWikipediaSessionsTest extends StreamingProgramTestBase implement
 
     PCollection<KV<String, Long>> output =
         p.apply(
-                Create.of(
-                    Arrays.asList(
-                        new TableRow().set("timestamp", now).set("contributor_username", "user1"),
-                        new TableRow()
-                            .set("timestamp", now + 10)
-                            .set("contributor_username", "user3"),
-                        new TableRow().set("timestamp", now).set("contributor_username", "user2"),
-                        new TableRow().set("timestamp", now).set("contributor_username", "user1"),
-                        new TableRow()
-                            .set("timestamp", now + 2)
-                            .set("contributor_username", "user1"),
-                        new TableRow().set("timestamp", now).set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 1)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 5)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 7)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 8)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 200)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 230)
-                            .set("contributor_username", "user1"),
-                        new TableRow()
-                            .set("timestamp", now + 230)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 240)
-                            .set("contributor_username", "user2"),
-                        new TableRow()
-                            .set("timestamp", now + 245)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 235)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 236)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 237)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 238)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 239)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 240)
-                            .set("contributor_username", "user3"),
-                        new TableRow()
-                            .set("timestamp", now + 241)
-                            .set("contributor_username", "user2"),
-                        new TableRow().set("timestamp", now).set("contributor_username", "user3"))))
+            Create.of(
+                Arrays.asList(
+                    new TableRow().set("timestamp", now).set("contributor_username", "user1"),
+                    new TableRow()
+                        .set("timestamp", now + 10)
+                        .set("contributor_username", "user3"),
+                    new TableRow().set("timestamp", now).set("contributor_username", "user2"),
+                    new TableRow().set("timestamp", now).set("contributor_username", "user1"),
+                    new TableRow()
+                        .set("timestamp", now + 2)
+                        .set("contributor_username", "user1"),
+                    new TableRow().set("timestamp", now).set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 1)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 5)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 7)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 8)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 200)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 230)
+                        .set("contributor_username", "user1"),
+                    new TableRow()
+                        .set("timestamp", now + 230)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 240)
+                        .set("contributor_username", "user2"),
+                    new TableRow()
+                        .set("timestamp", now + 245)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 235)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 236)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 237)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 238)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 239)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 240)
+                        .set("contributor_username", "user3"),
+                    new TableRow()
+                        .set("timestamp", now + 241)
+                        .set("contributor_username", "user2"),
+                    new TableRow().set("timestamp", now).set("contributor_username", "user3"))))
             .apply(
                 ParDo.of(
                     new DoFn<TableRow, String>() {
