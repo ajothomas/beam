@@ -7,3 +7,4 @@ RUN apt-get update && \
       python-pip \
       python-virtualenv \
       python-dev \
+      rsync
