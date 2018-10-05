@@ -830,7 +830,7 @@ artifactId=${project.name}
             maven {
               url(project.properties['distMgmtSnapshotsUrl'] ?: isRelease(project)
                       ? 'https://artifactory.secureserver.net/artifactory/'
-                      + 'maven-customerknowledgeplatform-apache-beam-local'
+                      + 'maven-customerknowledgeplatform-beam-local'
                       : 'https://repository.apache.org/content/repositories/snapshots')
               credentials {
                 username = System.getenv()['ORG_GRADLE_PROJECT_ARTIFACTORY_USER']
