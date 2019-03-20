@@ -20,12 +20,15 @@ package org.apache.beam.sdk.io.gcp.bigquery;
 import static org.junit.Assert.assertEquals;
 
 import com.google.api.services.bigquery.model.QueryResponse;
+import com.google.api.services.bigquery.model.Table;
+import com.google.api.services.bigquery.model.TableCell;
 import com.google.api.services.bigquery.model.TableFieldSchema;
+import com.google.api.services.bigquery.model.TableReference;
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.security.SecureRandom;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.KvCoder;
@@ -34,35 +37,166 @@ import org.apache.beam.sdk.extensions.gcp.options.GcpOptions;
 import org.apache.beam.sdk.io.gcp.testing.BigqueryClient;
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
+import org.apache.beam.sdk.options.ExperimentalOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.Validation;
+import org.apache.beam.sdk.testing.DataflowPortabilityApiUnsupported;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.TestPipelineOptions;
 import org.apache.beam.sdk.transforms.Reshuffle;
 import org.apache.beam.sdk.transforms.Values;
 import org.apache.beam.sdk.transforms.WithKeys;
 import org.apache.beam.sdk.values.PCollection;
-import org.junit.After;
-import org.junit.Before;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableList;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableMap;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Integration test for BigqueryIO with DataflowRunner and DirectRunner. */
 @RunWith(JUnit4.class)
 public class BigQueryToTableIT {
+  private static final Logger LOG = LoggerFactory.getLogger(BigQueryToTableIT.class);
+  private static String project;
 
-  private BigQueryToTableOptions options;
-  private String project;
-  private final String timestamp = Long.toString(System.currentTimeMillis());
-  private final String bigQueryDatasetId = "bq_query_to_table_" + timestamp;
-  private final String outputTableName = "output_table";
-  private BigQueryOptions bqOption;
-  private String outputTable;
-  private BigqueryClient bqClient;
+  private static final BigqueryClient BQ_CLIENT = new BigqueryClient("BigQueryToTableIT");
+
+  private static final String BIG_QUERY_DATASET_ID =
+      "bq_query_to_table_" + System.currentTimeMillis() + "_" + (new SecureRandom().nextInt(32));
+
+  private static final TableSchema LEGACY_QUERY_TABLE_SCHEMA =
+      new TableSchema()
+          .setFields(ImmutableList.of(new TableFieldSchema().setName("fruit").setType("STRING")));
+  private static final TableSchema NEW_TYPES_QUERY_TABLE_SCHEMA =
+      new TableSchema()
+          .setFields(
+              ImmutableList.of(
+                  new TableFieldSchema().setName("bytes").setType("BYTES"),
+                  new TableFieldSchema().setName("date").setType("DATE"),
+                  new TableFieldSchema().setName("time").setType("TIME")));
+  private static final String NEW_TYPES_QUERY_TABLE_NAME = "types";
+  private static final List<Map<String, Object>> NEW_TYPES_QUERY_TABLE_DATA =
+      ImmutableList.of(
+          ImmutableMap.of("bytes", "abc=", "date", "2000-01-01", "time", "00:00:00"),
+          ImmutableMap.of("bytes", "dec=", "date", "3000-12-31", "time", "23:59:59.990000"),
+          ImmutableMap.of("bytes", "xyw=", "date", "2011-01-01", "time", "23:59:59.999999"));
+
+  private void runBigQueryToTablePipeline(BigQueryToTableOptions options) {
+    Pipeline p = Pipeline.create(options);
+    BigQueryIO.Read bigQueryRead = BigQueryIO.read().fromQuery(options.getQuery());
+    if (options.getUsingStandardSql()) {
+      bigQueryRead = bigQueryRead.usingStandardSql();
+    }
+    PCollection<TableRow> input = p.apply(bigQueryRead);
+    if (options.getReshuffle()) {
+      input =
+          input
+              .apply(WithKeys.<Void, TableRow>of((Void) null))
+              .setCoder(KvCoder.of(VoidCoder.of(), TableRowJsonCoder.of()))
+              .apply(Reshuffle.<Void, TableRow>of())
+              .apply(Values.<TableRow>create());
+    }
+    input.apply(
+        BigQueryIO.writeTableRows()
+            .to(options.getOutput())
+            .withSchema(options.getOutputSchema())
+            .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
+
+    p.run().waitUntilFinish();
+  }
+
+  private BigQueryToTableOptions setupLegacyQueryTest(String outputTable) {
+    BigQueryToTableOptions options =
+        TestPipeline.testingPipelineOptions().as(BigQueryToTableOptions.class);
+    options.setTempLocation(options.getTempRoot() + "/bq_it_temp");
+    options.setQuery("SELECT * FROM (SELECT \"apple\" as fruit), (SELECT \"orange\" as fruit),");
+    options.setOutput(outputTable);
+    options.setOutputSchema(BigQueryToTableIT.LEGACY_QUERY_TABLE_SCHEMA);
+    return options;
+  }
+
+  private BigQueryToTableOptions setupNewTypesQueryTest(String outputTable) {
+    BigQueryToTableOptions options =
+        TestPipeline.testingPipelineOptions().as(BigQueryToTableOptions.class);
+    options.setTempLocation(options.getTempRoot() + "/bq_it_temp");
+    options.setQuery(
+        String.format(
+            "SELECT bytes, date, time FROM [%s:%s.%s]",
+            project, BIG_QUERY_DATASET_ID, BigQueryToTableIT.NEW_TYPES_QUERY_TABLE_NAME));
+    options.setOutput(outputTable);
+    options.setOutputSchema(BigQueryToTableIT.NEW_TYPES_QUERY_TABLE_SCHEMA);
+    return options;
+  }
+
+  private BigQueryToTableOptions setupStandardQueryTest(String outputTable) {
+    BigQueryToTableOptions options = this.setupLegacyQueryTest(outputTable);
+    options.setTempLocation(options.getTempRoot() + "/bq_it_temp");
+    options.setQuery(
+        "SELECT * FROM (SELECT \"apple\" as fruit) UNION ALL (SELECT \"orange\" as fruit)");
+    options.setUsingStandardSql(true);
+    return options;
+  }
+
+  private void verifyLegacyQueryRes(String outputTable) throws Exception {
+    LOG.info("Starting verifyLegacyQueryRes in outputTable {}", outputTable);
+    List<String> legacyQueryExpectedRes = ImmutableList.of("apple", "orange");
+    QueryResponse response =
+        BQ_CLIENT.queryWithRetries(String.format("SELECT fruit from [%s];", outputTable), project);
+    LOG.info("Finished to query result table {}", outputTable);
+    List<String> tableResult =
+        response
+            .getRows()
+            .stream()
+            .flatMap(row -> row.getF().stream().map(cell -> cell.getV().toString()))
+            .sorted()
+            .collect(Collectors.toList());
+
+    assertEquals(legacyQueryExpectedRes, tableResult);
+  }
+
+  private void verifyNewTypesQueryRes(String outputTable) throws Exception {
+    LOG.info("Starting verifyNewTypesQueryRes with outputTable {}", outputTable);
+    List<String> newTypeQueryExpectedRes =
+        ImmutableList.of(
+            "abc=,2000-01-01,00:00:00",
+            "dec=,3000-12-31,23:59:59.990000",
+            "xyw=,2011-01-01,23:59:59.999999");
+    QueryResponse response =
+        BQ_CLIENT.queryWithRetries(
+            String.format("SELECT bytes, date, time FROM [%s];", outputTable), project);
+    LOG.info("Finished to query result table {}", outputTable);
+    List<String> tableResult =
+        response
+            .getRows()
+            .stream()
+            .map(
+                row -> {
+                  String res = "";
+                  for (TableCell cell : row.getF()) {
+                    if (res.isEmpty()) {
+                      res = cell.getV().toString();
+                    } else {
+                      res = res + "," + cell.getV().toString();
+                    }
+                  }
+                  return res;
+                })
+            .sorted()
+            .collect(Collectors.toList());
+    assertEquals(newTypeQueryExpectedRes, tableResult);
+  }
+
+  private void verifyStandardQueryRes(String outputTable) throws Exception {
+    this.verifyLegacyQueryRes(outputTable);
+  }
 
   /** Customized PipelineOption for BigQueryToTable Pipeline. */
-  public interface BigQueryToTableOptions extends TestPipelineOptions {
+  public interface BigQueryToTableOptions extends TestPipelineOptions, ExperimentalOptions {
 
     @Description("The BigQuery query to be used for creating the source")
     @Validation.Required
@@ -97,68 +231,118 @@ public class BigQueryToTableIT {
     void setUsingStandardSql(boolean usingStandardSql);
   }
 
-  @Before
-  public void setupBqEnvironment() {
+  @BeforeClass
+  public static void setupTestEnvironment() throws Exception {
     PipelineOptionsFactory.register(BigQueryToTableOptions.class);
-    options = TestPipeline.testingPipelineOptions().as(BigQueryToTableOptions.class);
-    options.setTempLocation(options.getTempRoot() + "/bq_it_temp");
-    project = TestPipeline.testingPipelineOptions().as(GcpOptions.class).getProject();
+		project = TestPipeline.testingPipelineOptions().as(GcpOptions.class).getProject();
+    // Create one BQ dataset for all test cases.
+    BQ_CLIENT.createNewDataset(project, BIG_QUERY_DATASET_ID);
 
-    bqOption = options.as(BigQueryOptions.class);
-    bqClient = new BigqueryClient(bqOption.getAppName());
-    bqClient.createNewDataset(project, bigQueryDatasetId);
-    outputTable = project + ":" + bigQueryDatasetId + "." + outputTableName;
+    // Create table and insert data for new type query test cases.
+    BQ_CLIENT.createNewTable(
+				project,
+        BIG_QUERY_DATASET_ID,
+        new Table()
+            .setSchema(BigQueryToTableIT.NEW_TYPES_QUERY_TABLE_SCHEMA)
+            .setTableReference(
+                new TableReference()
+                    .setTableId(BigQueryToTableIT.NEW_TYPES_QUERY_TABLE_NAME)
+                    .setDatasetId(BIG_QUERY_DATASET_ID)
+                    .setProjectId(project)));
+    BQ_CLIENT.insertDataToTable(
+        project,
+        BIG_QUERY_DATASET_ID,
+        BigQueryToTableIT.NEW_TYPES_QUERY_TABLE_NAME,
+        BigQueryToTableIT.NEW_TYPES_QUERY_TABLE_DATA);
   }
 
-  @After
-  public void cleanBqEnvironment() {
-    bqClient.deleteDataset(project, bigQueryDatasetId);
-  }
-
-  private void runBigQueryToTablePipeline() {
-    Pipeline p = Pipeline.create(options);
-    BigQueryIO.Read bigQueryRead = BigQueryIO.read().fromQuery(options.getQuery());
-    if (options.getUsingStandardSql()) {
-      bigQueryRead = bigQueryRead.usingStandardSql();
-    }
-    PCollection<TableRow> input = p.apply(bigQueryRead);
-    if (options.getReshuffle()) {
-      input =
-          input
-              .apply(WithKeys.<Void, TableRow>of((Void) null))
-              .setCoder(KvCoder.of(VoidCoder.of(), TableRowJsonCoder.of()))
-              .apply(Reshuffle.<Void, TableRow>of())
-              .apply(Values.<TableRow>create());
-    }
-    input.apply(
-        BigQueryIO.writeTableRows()
-            .to(options.getOutput())
-            .withSchema(options.getOutputSchema())
-            .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
-
-    p.run().waitUntilFinish();
+  @AfterClass
+  public static void cleanup() {
+    LOG.info("Start to clean up tables and datasets.");
+    BQ_CLIENT.deleteDataset(project, BIG_QUERY_DATASET_ID);
   }
 
   @Test
   public void testLegacyQueryWithoutReshuffle() throws Exception {
-    List<String> expectedList = Arrays.asList("apple", "orange");
-    options.setQuery("SELECT * FROM (SELECT \"apple\" as fruit), (SELECT \"orange\" as fruit),");
-    options.setOutput(outputTable);
-    List<TableFieldSchema> fieldSchemas = new ArrayList<>();
-    fieldSchemas.add(new TableFieldSchema().setName("fruit").setType("STRING"));
-    options.setOutputSchema(new TableSchema().setFields(fieldSchemas));
+    final String outputTable =
+				project + ":" + BIG_QUERY_DATASET_ID + "." + "testLegacyQueryWithoutReshuffle";
 
-    runBigQueryToTablePipeline();
+    this.runBigQueryToTablePipeline(setupLegacyQueryTest(outputTable));
 
-    QueryResponse response =
-        bqClient.queryWithRetries(String.format("SELECT fruit from [%s];", outputTable), project);
-    List<String> tableResult =
-        response
-            .getRows()
-            .stream()
-            .flatMap(row -> row.getF().stream().map(cell -> cell.getV().toString()))
-            .collect(Collectors.toList());
+    this.verifyLegacyQueryRes(outputTable);
+  }
 
-    assertEquals(expectedList, tableResult);
+  @Test
+  public void testNewTypesQueryWithoutReshuffle() throws Exception {
+    final String outputTable =
+				project + ":" + BIG_QUERY_DATASET_ID + "." + "testNewTypesQueryWithoutReshuffle";
+
+    this.runBigQueryToTablePipeline(setupNewTypesQueryTest(outputTable));
+
+    this.verifyNewTypesQueryRes(outputTable);
+  }
+
+  @Test
+  public void testNewTypesQueryWithReshuffle() throws Exception {
+    final String outputTable =
+				project + ":" + BIG_QUERY_DATASET_ID + "." + "testNewTypesQueryWithReshuffle";
+    BigQueryToTableOptions options = setupNewTypesQueryTest(outputTable);
+    options.setReshuffle(true);
+
+    this.runBigQueryToTablePipeline(options);
+
+    this.verifyNewTypesQueryRes(outputTable);
+  }
+
+  @Test
+  public void testStandardQueryWithoutCustom() throws Exception {
+    final String outputTable =
+				project + ":" + BIG_QUERY_DATASET_ID + "." + "testStandardQueryWithoutCustom";
+
+    this.runBigQueryToTablePipeline(setupStandardQueryTest(outputTable));
+
+    this.verifyStandardQueryRes(outputTable);
+  }
+
+  @Test
+  @Category(DataflowPortabilityApiUnsupported.class)
+  public void testNewTypesQueryWithoutReshuffleWithCustom() throws Exception {
+    final String outputTable =
+				project + ":" + BIG_QUERY_DATASET_ID + "." + "testNewTypesQueryWithoutReshuffleWithCustom";
+    BigQueryToTableOptions options = this.setupNewTypesQueryTest(outputTable);
+    options.setExperiments(
+        ImmutableList.of("enable_custom_bigquery_sink", "enable_custom_bigquery_source"));
+
+    this.runBigQueryToTablePipeline(options);
+
+    this.verifyNewTypesQueryRes(outputTable);
+  }
+
+  @Test
+  @Category(DataflowPortabilityApiUnsupported.class)
+  public void testLegacyQueryWithoutReshuffleWithCustom() throws Exception {
+    final String outputTable =
+        project + ":" + BIG_QUERY_DATASET_ID + "." + "testLegacyQueryWithoutReshuffleWithCustom";
+    BigQueryToTableOptions options = this.setupLegacyQueryTest(outputTable);
+    options.setExperiments(
+        ImmutableList.of("enable_custom_bigquery_sink", "enable_custom_bigquery_source"));
+
+    this.runBigQueryToTablePipeline(options);
+
+    this.verifyLegacyQueryRes(outputTable);
+  }
+
+  @Test
+  @Category(DataflowPortabilityApiUnsupported.class)
+  public void testStandardQueryWithoutReshuffleWithCustom() throws Exception {
+    final String outputTable =
+        project + ":" + BIG_QUERY_DATASET_ID + "." + "testStandardQueryWithoutReshuffleWithCustom";
+    BigQueryToTableOptions options = this.setupStandardQueryTest(outputTable);
+    options.setExperiments(
+        ImmutableList.of("enable_custom_bigquery_sink", "enable_custom_bigquery_source"));
+
+    this.runBigQueryToTablePipeline(options);
+
+    this.verifyStandardQueryRes(outputTable);
   }
 }

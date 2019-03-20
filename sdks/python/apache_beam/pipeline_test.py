@@ -21,7 +21,9 @@ from __future__ import absolute_import
 
 import copy
 import logging
+import os
 import platform
+import sys
 import unittest
 from builtins import object
 from builtins import range
@@ -259,6 +261,7 @@ class PipelineTest(unittest.TestCase):
         ['a-x', 'b-x', 'c-x'],
         sorted(['a', 'b', 'c'] | 'AddSuffix' >> AddSuffix('-x')))
 
+  @unittest.skip("Fails on some platforms with new urllib3.")
   def test_memory_usage(self):
     try:
       import resource
@@ -390,6 +393,9 @@ class DoFnTest(unittest.TestCase):
     assert_that(pcoll, equal_to([11, 12]))
     pipeline.run()
 
+  @unittest.skipIf(sys.version_info[0] == 3 and
+                   os.environ.get('RUN_SKIPPED_PY3_TESTS') != '1',
+                   'This test still needs to be fixed on Python 3.')
   def test_side_input_no_tag(self):
     class TestDoFn(DoFn):
       def process(self, element, prefix, suffix):
@@ -405,6 +411,9 @@ class DoFnTest(unittest.TestCase):
     assert_that(result, equal_to(['zyx-%s-xyz' % x for x in words_list]))
     pipeline.run()
 
+  @unittest.skipIf(sys.version_info[0] == 3 and
+                   os.environ.get('RUN_SKIPPED_PY3_TESTS') != '1',
+                   'This test still needs to be fixed on Python 3.')
   def test_side_input_tagged(self):
     class TestDoFn(DoFn):
       def process(self, element, prefix, suffix=DoFn.SideInputParam):
@@ -520,13 +529,14 @@ class PipelineOptionsTest(unittest.TestCase):
     options = Breakfast()
     self.assertEquals(
         set(['from_dictionary', 'get_all_options', 'slices', 'style',
-             'view_as', 'display_data', 'next']),
-        set([attr for attr in dir(options) if not attr.startswith('_')]))
+             'view_as', 'display_data']),
+        set([attr for attr in dir(options) if not attr.startswith('_') and
+             attr != 'next']))
     self.assertEquals(
         set(['from_dictionary', 'get_all_options', 'style', 'view_as',
-             'display_data', 'next']),
+             'display_data']),
         set([attr for attr in dir(options.view_as(Eggs))
-             if not attr.startswith('_')]))
+             if not attr.startswith('_') and attr != 'next']))
 
 
 class RunnerApiTest(unittest.TestCase):
@@ -540,7 +550,8 @@ class RunnerApiTest(unittest.TestCase):
 
     p = beam.Pipeline()
     p | MyPTransform()  # pylint: disable=expression-not-assigned
-    p = Pipeline.from_runner_api(Pipeline.to_runner_api(p), None, None)
+    p = Pipeline.from_runner_api(
+        Pipeline.to_runner_api(p, use_fake_coders=True), None, None)
     self.assertIsNotNone(p.transforms_stack[0].parts[0].parent)
     self.assertEquals(p.transforms_stack[0].parts[0].parent,
                       p.transforms_stack[0])

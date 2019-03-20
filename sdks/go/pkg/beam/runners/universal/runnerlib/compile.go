@@ -35,9 +35,6 @@ import (
 // IsWorkerCompatibleBinary returns the path to itself and true if running
 // a linux-amd64 binary that can directly be used as a worker binary.
 func IsWorkerCompatibleBinary() (string, bool) {
-	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
-		return os.Args[0], true
-	}
 	return "", false
 }
 
@@ -82,7 +79,7 @@ func BuildWorkerBinary(ctx context.Context, filename string) error {
 	cmd := exec.Command(build[0], build[1:]...)
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to cross-compile %v: %v\n%v", program, err, out)
+		return fmt.Errorf("failed to cross-compile %v: %v\n%v", program, err, string(out))
 	}
 	return nil
 }

@@ -57,6 +57,8 @@ import org.apache.flink.util.Preconditions;
  * {@link StateInternals} that uses {@link KeyGroupCheckpointedOperator} to checkpoint state.
  *
  * <p>Note: Ignore index of key. Just implement BagState.
+ *
+ * <p>Reference from Flink's HeapInternalTimerService to the local key-group range.
  */
 public class FlinkKeyGroupStateInternals<K> implements StateInternals {
 
@@ -69,8 +71,10 @@ public class FlinkKeyGroupStateInternals<K> implements StateInternals {
   private final Map<String, Tuple2<Coder<?>, Map<String, ?>>>[] stateTables;
 
   public FlinkKeyGroupStateInternals(Coder<K> keyCoder, KeyedStateBackend keyedStateBackend) {
-    this.keyCoder = keyCoder;
-    this.keyedStateBackend = keyedStateBackend;
+    this.keyCoder = Preconditions.checkNotNull(keyCoder, "Coder for key must be provided.");
+    this.keyedStateBackend =
+        Preconditions.checkNotNull(
+            keyedStateBackend, "KeyedStateBackend must not be null. Missing keyBy call?");
     this.localKeyGroupRange = keyedStateBackend.getKeyGroupRange();
     // find the starting index of the local key-group range
     int startIdx = Integer.MAX_VALUE;

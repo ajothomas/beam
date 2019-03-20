@@ -17,6 +17,7 @@
  */
 package org.apache.beam.sdk.extensions.sql.meta.provider.bigquery;
 
+import static org.apache.beam.sdk.extensions.sql.utils.DateTimeUtils.parseTimestampWithUTCTimeZone;
 import static org.apache.beam.sdk.schemas.Schema.FieldType.BOOLEAN;
 import static org.apache.beam.sdk.schemas.Schema.FieldType.BYTE;
 import static org.apache.beam.sdk.schemas.Schema.FieldType.DOUBLE;
@@ -29,7 +30,6 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.List;
@@ -50,9 +50,8 @@ import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.SerializableFunctions;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.Row;
-import org.joda.time.DateTime;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableMap;
 import org.joda.time.Duration;
-import org.joda.time.chrono.ISOChronology;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -93,7 +92,7 @@ public class BigQueryReadWriteIT implements Serializable {
     BeamSqlEnv sqlEnv = BeamSqlEnv.inMemory(new BigQueryTableProvider());
 
     String createTableStatement =
-        "CREATE TABLE TEST( \n"
+        "CREATE EXTERNAL TABLE TEST( \n"
             + "   c_bigint BIGINT, \n"
             + "   c_tinyint TINYINT, \n"
             + "   c_smallint SMALLINT, \n"
@@ -146,7 +145,7 @@ public class BigQueryReadWriteIT implements Serializable {
                 (float) 1.0,
                 1.0,
                 true,
-                new DateTime(2018, 05, 28, 20, 17, 40, 123, ISOChronology.getInstanceUTC()),
+                parseTimestampWithUTCTimeZone("2018-05-28 20:17:40.123"),
                 "varchar",
                 "char",
                 Arrays.asList("123", "456")));
@@ -159,7 +158,7 @@ public class BigQueryReadWriteIT implements Serializable {
     BeamSqlEnv sqlEnv = BeamSqlEnv.inMemory(new BigQueryTableProvider());
 
     String createTableStatement =
-        "CREATE TABLE TEST( \n"
+        "CREATE EXTERNAL TABLE TEST( \n"
             + "   c_bigint BIGINT, \n"
             + "   c_tinyint TINYINT, \n"
             + "   c_smallint SMALLINT, \n"
@@ -208,7 +207,7 @@ public class BigQueryReadWriteIT implements Serializable {
                 (float) 1.0,
                 1.0,
                 true,
-                new DateTime(2018, 05, 28, 20, 17, 40, 123, ISOChronology.getInstanceUTC()),
+                parseTimestampWithUTCTimeZone("2018-05-28 20:17:40.123"),
                 "varchar",
                 "char",
                 Arrays.asList("123", "456"))));
@@ -227,7 +226,7 @@ public class BigQueryReadWriteIT implements Serializable {
             new BigQueryTableProvider());
 
     String createTableStatement =
-        "CREATE TABLE ORDERS_BQ( \n"
+        "CREATE EXTERNAL TABLE ORDERS_BQ( \n"
             + "   id BIGINT, \n"
             + "   name VARCHAR, \n "
             + "   arr ARRAY<VARCHAR> \n"

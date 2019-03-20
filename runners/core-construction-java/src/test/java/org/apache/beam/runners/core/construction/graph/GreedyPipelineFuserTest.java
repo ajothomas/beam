@@ -15,10 +15,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.beam.runners.core.construction.graph;
 
-import static com.google.common.collect.Iterables.getOnlyElement;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Iterables.getOnlyElement;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -37,7 +36,6 @@ import java.util.stream.Collectors;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Coder;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Components;
-import org.apache.beam.model.pipeline.v1.RunnerApi.Environment;
 import org.apache.beam.model.pipeline.v1.RunnerApi.FunctionSpec;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PCollection;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
@@ -49,6 +47,7 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.StateSpec;
 import org.apache.beam.model.pipeline.v1.RunnerApi.TimerSpec;
 import org.apache.beam.model.pipeline.v1.RunnerApi.WindowIntoPayload;
 import org.apache.beam.model.pipeline.v1.RunnerApi.WindowingStrategy;
+import org.apache.beam.runners.core.construction.Environments;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
 import org.apache.beam.runners.core.construction.graph.PipelineNode.PCollectionNode;
 import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
@@ -79,8 +78,8 @@ public class GreedyPipelineFuserTest {
                             .setUrn(PTransformTranslation.IMPULSE_TRANSFORM_URN))
                     .build())
             .putPcollections("impulse.out", pc("impulse.out"))
-            .putEnvironments("go", Environment.newBuilder().setUrl("go").build())
-            .putEnvironments("py", Environment.newBuilder().setUrl("py").build())
+            .putEnvironments("go", Environments.createDockerEnvironment("go"))
+            .putEnvironments("py", Environments.createDockerEnvironment("py"))
             .putCoders("coder", Coder.newBuilder().build())
             .putCoders("windowCoder", Coder.newBuilder().build())
             .putWindowingStrategies(
@@ -178,26 +177,30 @@ public class GreedyPipelineFuserTest {
    * becomes all runner-executed
    */
   @Test
-  public void unknownTransformsNoEnvironmentBecomeRunnerExecuted() {
+  public void transformsWithNoEnvironmentBecomeRunnerExecuted() {
     Components components =
         partialComponents
             .toBuilder()
             .putTransforms(
                 "mystery",
                 PTransform.newBuilder()
+                    .setSpec(
+                        FunctionSpec.newBuilder()
+                            .setUrn(PTransformTranslation.PAR_DO_TRANSFORM_URN))
                     .setUniqueName("Mystery")
                     .putInputs("input", "impulse.out")
                     .putOutputs("output", "mystery.out")
-                    .setSpec(FunctionSpec.newBuilder().setUrn("beam:transform:mystery:v1.4"))
                     .build())
             .putPcollections("mystery.out", pc("mystery.out"))
             .putTransforms(
                 "enigma",
                 PTransform.newBuilder()
+                    .setSpec(
+                        FunctionSpec.newBuilder()
+                            .setUrn(PTransformTranslation.PAR_DO_TRANSFORM_URN))
                     .setUniqueName("Enigma")
                     .putInputs("input", "impulse.out")
                     .putOutputs("output", "enigma.out")
-                    .setSpec(FunctionSpec.newBuilder().setUrn("beam:transform:enigma:v1"))
                     .build())
             .putPcollections("enigma.out", pc("enigma.out"))
             .build();
@@ -486,8 +489,8 @@ public class GreedyPipelineFuserTest {
                                     .toByteString()))
                     .build())
             .putPcollections("goParDo.out", pc("goParDo.out"))
-            .putEnvironments("go", Environment.newBuilder().setUrl("go").build())
-            .putEnvironments("py", Environment.newBuilder().setUrl("py").build())
+            .putEnvironments("go", Environments.createDockerEnvironment("go"))
+            .putEnvironments("py", Environments.createDockerEnvironment("py"))
             .build();
     FusedPipeline fused =
         GreedyPipelineFuser.fuse(Pipeline.newBuilder().setComponents(components).build());
@@ -645,8 +648,8 @@ public class GreedyPipelineFuserTest {
                                     .toByteString()))
                     .build())
             .putPcollections("goParDo.out", pc("goParDo.out"))
-            .putEnvironments("go", Environment.newBuilder().setUrl("go").build())
-            .putEnvironments("py", Environment.newBuilder().setUrl("py").build())
+            .putEnvironments("go", Environments.createDockerEnvironment("go"))
+            .putEnvironments("py", Environments.createDockerEnvironment("py"))
             .build();
     FusedPipeline fused =
         GreedyPipelineFuser.fuse(Pipeline.newBuilder().setComponents(components).build());
@@ -874,7 +877,7 @@ public class GreedyPipelineFuserTest {
                             .build())
                     .build())
             .putPcollections("sideParDo.out", pc("sideParDo.out"))
-            .putEnvironments("py", Environment.newBuilder().setUrl("py").build())
+            .putEnvironments("py", Environments.createDockerEnvironment("py"))
             .build();
 
     FusedPipeline fused =
@@ -956,7 +959,7 @@ public class GreedyPipelineFuserTest {
             .putPcollections("parDo.out", pc("parDo.out"))
             .putTransforms("stateful", statefulTransform)
             .putPcollections("stateful.out", pc("stateful.out"))
-            .putEnvironments("common", Environment.newBuilder().setUrl("common").build())
+            .putEnvironments("common", Environments.createDockerEnvironment("common"))
             .build();
     FusedPipeline fused =
         GreedyPipelineFuser.fuse(Pipeline.newBuilder().setComponents(components).build());
@@ -1027,7 +1030,7 @@ public class GreedyPipelineFuserTest {
             .putTransforms("timer", timerTransform)
             .putPcollections("timer.out", pc("timer.out"))
             .putPcollections("output.out", pc("output.out"))
-            .putEnvironments("common", Environment.newBuilder().setUrl("common").build())
+            .putEnvironments("common", Environments.createDockerEnvironment("common"))
             .build();
 
     FusedPipeline fused =
@@ -1044,6 +1047,57 @@ public class GreedyPipelineFuserTest {
                 .withOutputs("parDo.out")
                 .withTransforms("parDo"),
             ExecutableStageMatcher.withInput("parDo.out").withNoOutputs().withTransforms("timer")));
+  }
+
+  /*
+   * Tests that parDo with state and timers is fused correctly and can be queried
+   * impulse -> .out -> timer -> .out
+   * becomes
+   * (impulse.out) -> timer
+   */
+  @Test
+  public void parDoWithStateAndTimerRootsStage() {
+    PTransform timerTransform =
+        PTransform.newBuilder()
+            .setUniqueName("TimerParDo")
+            .putInputs("input", "impulse.out")
+            .putInputs("timer", "timer.out")
+            .putOutputs("timer", "timer.out")
+            .putOutputs("output", "output.out")
+            .setSpec(
+                FunctionSpec.newBuilder()
+                    .setUrn(PTransformTranslation.PAR_DO_TRANSFORM_URN)
+                    .setPayload(
+                        ParDoPayload.newBuilder()
+                            .setDoFn(SdkFunctionSpec.newBuilder().setEnvironmentId("common"))
+                            .putStateSpecs("state", StateSpec.getDefaultInstance())
+                            .putTimerSpecs("timer", TimerSpec.getDefaultInstance())
+                            .build()
+                            .toByteString()))
+            .build();
+
+    Components components =
+        partialComponents
+            .toBuilder()
+            .putTransforms("timer", timerTransform)
+            .putPcollections("timer.out", pc("timer.out"))
+            .putPcollections("output.out", pc("output.out"))
+            .putEnvironments("common", Environments.createDockerEnvironment("common"))
+            .build();
+
+    FusedPipeline fused =
+        GreedyPipelineFuser.fuse(Pipeline.newBuilder().setComponents(components).build());
+
+    assertThat(
+        fused.getRunnerExecutedTransforms(),
+        containsInAnyOrder(
+            PipelineNode.pTransform("impulse", components.getTransformsOrThrow("impulse"))));
+    assertThat(
+        fused.getFusedStages(),
+        contains(
+            ExecutableStageMatcher.withInput("impulse.out")
+                .withNoOutputs()
+                .withTransforms("timer")));
   }
 
   /*
@@ -1236,7 +1290,7 @@ public class GreedyPipelineFuserTest {
                     .putWindowingStrategies(
                         "ws",
                         WindowingStrategy.newBuilder().setWindowCoderId("windowCoder").build())
-                    .putEnvironments("py", Environment.newBuilder().setUrl("py").build())
+                    .putEnvironments("py", Environments.createDockerEnvironment("py"))
                     .putPcollections(flattenOutput.getUniqueName(), flattenOutput)
                     .putTransforms(flattenTransform.getUniqueName(), flattenTransform)
                     .putPcollections(read1Output.getUniqueName(), read1Output)

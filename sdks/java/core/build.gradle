@@ -51,7 +51,9 @@ test {
 }
 
 dependencies {
-  compile library.java.guava
+  // Required to load constants from the model, e.g. max timestamp for global window
+  shadow project(path: ":beam-model-pipeline", configuration: "shadow")
+  shadow library.java.vendored_guava_20_0
   compile library.java.protobuf_java
   compile library.java.byte_buddy
   compile library.java.commons_compress
@@ -72,5 +74,9 @@ dependencies {
   shadowTest library.java.guava_testlib
   shadowTest library.java.slf4j_jdk14
   shadowTest library.java.mockito_core
+  shadowTest library.java.hamcrest_core
+  shadowTest library.java.hamcrest_library
   shadowTest "com.esotericsoftware.kryo:kryo:2.21"
+  shadowTest library.java.quickcheck_core
+  shadowTest library.java.avro_tests
 }

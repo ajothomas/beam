@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.beam.sdk.io.gcp.datastore;
 
 import static com.google.datastore.v1.QueryResultBatch.MoreResultsType.NOT_FINISHED;
@@ -371,7 +370,7 @@ class V1TestUtil {
       int numFetch = currentBatch.getEntityResultsCount();
       // All indications from the API are that there are/may be more results.
       moreResults =
-          ((numFetch == QUERY_BATCH_LIMIT) || (currentBatch.getMoreResults() == NOT_FINISHED));
+          (numFetch == QUERY_BATCH_LIMIT) || (currentBatch.getMoreResults() == NOT_FINISHED);
 
       // May receive a batch of 0 results if the number of records is a multiple
       // of the request limit.

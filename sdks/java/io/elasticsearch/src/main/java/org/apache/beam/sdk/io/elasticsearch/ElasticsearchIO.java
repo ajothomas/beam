@@ -17,8 +17,8 @@
  */
 package org.apache.beam.sdk.io.elasticsearch;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkArgument;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkState;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -26,7 +26,6 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auto.value.AutoValue;
-import com.google.common.annotations.VisibleForTesting;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -64,12 +63,15 @@ import org.apache.beam.sdk.util.Sleeper;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PDone;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.annotations.VisibleForTesting;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.entity.BufferedHttpEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
@@ -133,10 +135,16 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Optionally, you can provide {@link ElasticsearchIO.Write.FieldValueExtractFn} using {@code
  * withIndexFn()} or {@code withTypeFn()} to enable per-document routing to the target Elasticsearch
- * index and type.
+ * index (all versions) and type (version &gt; 6). Support for type routing was removed in
+ * Elasticsearch 6 (see
+ * https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch)
  *
  * <p>When {withUsePartialUpdate()} is enabled, the input document must contain an id field and
  * {@code withIdFn()} must be used to allow its extraction by the ElasticsearchIO.
+ *
+ * <p>Optionally, {@code withSocketAndRetryTimeout()} can be used to override the default retry
+ * timeout and socket timeout of 30000ms. {@code withConnectTimeout()} can be used to override the
+ * default connect timeout of 1000ms.
  */
 @Experimental(Experimental.Kind.SOURCE_SINK)
 public class ElasticsearchIO {
@@ -169,12 +177,12 @@ public class ElasticsearchIO {
   private static final ObjectMapper mapper = new ObjectMapper();
 
   @VisibleForTesting
-  static JsonNode parseResponse(Response response) throws IOException {
-    return mapper.readValue(response.getEntity().getContent(), JsonNode.class);
+  static JsonNode parseResponse(HttpEntity responseEntity) throws IOException {
+    return mapper.readValue(responseEntity.getContent(), JsonNode.class);
   }
 
-  static void checkForErrors(Response response, int backendVersion) throws IOException {
-    JsonNode searchResult = parseResponse(response);
+  static void checkForErrors(HttpEntity responseEntity, int backendVersion) throws IOException {
+    JsonNode searchResult = parseResponse(responseEntity);
     boolean errors = searchResult.path("errors").asBoolean();
     if (errors) {
       StringBuilder errorMessages =
@@ -186,7 +194,7 @@ public class ElasticsearchIO {
         String errorRootName = "";
         if (backendVersion == 2) {
           errorRootName = "create";
-        } else if (backendVersion == 5) {
+        } else if (backendVersion == 5 || backendVersion == 6) {
           errorRootName = "index";
         }
         JsonNode errorRoot = item.path(errorRootName);
@@ -230,6 +238,12 @@ public class ElasticsearchIO {
 
     public abstract String getType();
 
+    @Nullable
+    public abstract Integer getSocketAndRetryTimeout();
+
+    @Nullable
+    public abstract Integer getConnectTimeout();
+
     abstract Builder builder();
 
     @AutoValue.Builder
@@ -248,6 +262,10 @@ public class ElasticsearchIO {
 
       abstract Builder setType(String type);
 
+      abstract Builder setSocketAndRetryTimeout(Integer maxRetryTimeout);
+
+      abstract Builder setConnectTimeout(Integer connectTimeout);
+
       abstract ConnectionConfiguration build();
     }
 
@@ -264,19 +282,19 @@ public class ElasticsearchIO {
       checkArgument(addresses.length > 0, "addresses can not be empty");
       checkArgument(index != null, "index can not be null");
       checkArgument(type != null, "type can not be null");
-      ConnectionConfiguration connectionConfiguration =
-          new AutoValue_ElasticsearchIO_ConnectionConfiguration.Builder()
-              .setAddresses(Arrays.asList(addresses))
-              .setIndex(index)
-              .setType(type)
-              .build();
-      return connectionConfiguration;
+      return new AutoValue_ElasticsearchIO_ConnectionConfiguration.Builder()
+          .setAddresses(Arrays.asList(addresses))
+          .setIndex(index)
+          .setType(type)
+          .build();
     }
 
     /**
      * If Elasticsearch authentication is enabled, provide the username.
      *
      * @param username the username used to authenticate to Elasticsearch
+     * @return a {@link ConnectionConfiguration} describes a connection configuration to
+     *     Elasticsearch.
      */
     public ConnectionConfiguration withUsername(String username) {
       checkArgument(username != null, "username can not be null");
@@ -288,6 +306,8 @@ public class ElasticsearchIO {
      * If Elasticsearch authentication is enabled, provide the password.
      *
      * @param password the password used to authenticate to Elasticsearch
+     * @return a {@link ConnectionConfiguration} describes a connection configuration to
+     *     Elasticsearch.
      */
     public ConnectionConfiguration withPassword(String password) {
       checkArgument(password != null, "password can not be null");
@@ -300,6 +320,8 @@ public class ElasticsearchIO {
      * containing the client key.
      *
      * @param keystorePath the location of the keystore containing the client key.
+     * @return a {@link ConnectionConfiguration} describes a connection configuration to
+     *     Elasticsearch.
      */
     public ConnectionConfiguration withKeystorePath(String keystorePath) {
       checkArgument(keystorePath != null, "keystorePath can not be null");
@@ -312,10 +334,39 @@ public class ElasticsearchIO {
      * to open the client keystore.
      *
      * @param keystorePassword the password of the client keystore.
+     * @return a {@link ConnectionConfiguration} describes a connection configuration to
+     *     Elasticsearch.
      */
     public ConnectionConfiguration withKeystorePassword(String keystorePassword) {
       checkArgument(keystorePassword != null, "keystorePassword can not be null");
       return builder().setKeystorePassword(keystorePassword).build();
+    }
+
+    /**
+     * If set, overwrites the default max retry timeout (30000ms) in the Elastic {@link RestClient}
+     * and the default socket timeout (30000ms) in the {@link RequestConfig} of the Elastic {@link
+     * RestClient}.
+     *
+     * @param socketAndRetryTimeout the socket and retry timeout in millis.
+     * @return a {@link ConnectionConfiguration} describes a connection configuration to
+     *     Elasticsearch.
+     */
+    public ConnectionConfiguration withSocketAndRetryTimeout(Integer socketAndRetryTimeout) {
+      checkArgument(socketAndRetryTimeout != null, "socketAndRetryTimeout can not be null");
+      return builder().setSocketAndRetryTimeout(socketAndRetryTimeout).build();
+    }
+
+    /**
+     * If set, overwrites the default connect timeout (1000ms) in the {@link RequestConfig} of the
+     * Elastic {@link RestClient}.
+     *
+     * @param connectTimeout the socket and retry timeout in millis.
+     * @return a {@link ConnectionConfiguration} describes a connection configuration to
+     *     Elasticsearch.
+     */
+    public ConnectionConfiguration withConnectTimeout(Integer connectTimeout) {
+      checkArgument(connectTimeout != null, "connectTimeout can not be null");
+      return builder().setConnectTimeout(connectTimeout).build();
     }
 
     private void populateDisplayData(DisplayData.Builder builder) {
@@ -324,6 +375,8 @@ public class ElasticsearchIO {
       builder.add(DisplayData.item("type", getType()));
       builder.addIfNotNull(DisplayData.item("username", getUsername()));
       builder.addIfNotNull(DisplayData.item("keystore.path", getKeystorePath()));
+      builder.addIfNotNull(DisplayData.item("socketAndRetryTimeout", getSocketAndRetryTimeout()));
+      builder.addIfNotNull(DisplayData.item("connectTimeout", getConnectTimeout()));
     }
 
     @VisibleForTesting
@@ -363,6 +416,24 @@ public class ElasticsearchIO {
           throw new IOException("Can't load the client certificate from the keystore", e);
         }
       }
+      restClientBuilder.setRequestConfigCallback(
+          new RestClientBuilder.RequestConfigCallback() {
+            @Override
+            public RequestConfig.Builder customizeRequestConfig(
+                RequestConfig.Builder requestConfigBuilder) {
+              if (getConnectTimeout() != null) {
+                requestConfigBuilder.setConnectTimeout(getConnectTimeout());
+              }
+              if (getSocketAndRetryTimeout() != null) {
+                requestConfigBuilder.setSocketTimeout(getSocketAndRetryTimeout());
+              }
+              return requestConfigBuilder;
+            }
+          });
+      if (getSocketAndRetryTimeout() != null) {
+        restClientBuilder.setMaxRetryTimeoutMillis(getSocketAndRetryTimeout());
+      }
+
       return restClientBuilder.build();
     }
   }
@@ -402,7 +473,13 @@ public class ElasticsearchIO {
       abstract Read build();
     }
 
-    /** Provide the Elasticsearch connection configuration object. */
+    /**
+     * Provide the Elasticsearch connection configuration object.
+     *
+     * @param connectionConfiguration a {@link ConnectionConfiguration} describes a connection
+     *     configuration to Elasticsearch.
+     * @return a {@link PTransform} reading data from Elasticsearch.
+     */
     public Read withConnectionConfiguration(ConnectionConfiguration connectionConfiguration) {
       checkArgument(connectionConfiguration != null, "connectionConfiguration can not be null");
       return builder().setConnectionConfiguration(connectionConfiguration).build();
@@ -414,6 +491,7 @@ public class ElasticsearchIO {
      * @param query the query. See <a
      *     href="https://www.elastic.co/guide/en/elasticsearch/reference/2.4/query-dsl.html">Query
      *     DSL</a>
+     * @return a {@link PTransform} reading data from Elasticsearch.
      */
     public Read withQuery(String query) {
       checkArgument(query != null, "query can not be null");
@@ -423,6 +501,8 @@ public class ElasticsearchIO {
 
     /**
      * Include metadata in result json documents. Document source will be under json node _source.
+     *
+     * @return a {@link PTransform} reading data from Elasticsearch.
      */
     public Read withMetadata() {
       return builder().setWithMetadata(true).build();
@@ -432,6 +512,9 @@ public class ElasticsearchIO {
      * Provide a scroll keepalive. See <a
      * href="https://www.elastic.co/guide/en/elasticsearch/reference/2.4/search-request-scroll.html">scroll
      * API</a> Default is "5m". Change this only if you get "No search context found" errors.
+     *
+     * @param scrollKeepalive keepalive duration of the scroll
+     * @return a {@link PTransform} reading data from Elasticsearch.
      */
     public Read withScrollKeepalive(String scrollKeepalive) {
       checkArgument(scrollKeepalive != null, "scrollKeepalive can not be null");
@@ -447,6 +530,7 @@ public class ElasticsearchIO {
      * batchSize
      *
      * @param batchSize number of documents read in each scroll read
+     * @return a {@link PTransform} reading data from Elasticsearch.
      */
     public Read withBatchSize(long batchSize) {
       checkArgument(
@@ -522,9 +606,9 @@ public class ElasticsearchIO {
       List<BoundedElasticsearchSource> sources = new ArrayList<>();
       if (backendVersion == 2) {
         // 1. We split per shard :
-        // unfortunately, Elasticsearch 2. x doesn 't provide a way to do parallel reads on a single
+        // unfortunately, Elasticsearch 2.x doesn't provide a way to do parallel reads on a single
         // shard.So we do not use desiredBundleSize because we cannot split shards.
-        // With the slice API in ES 5.0 we will be able to use desiredBundleSize.
+        // With the slice API in ES 5.x+ we will be able to use desiredBundleSize.
         // Basically we will just ask the slice API to return data
         // in nbBundles = estimatedSize / desiredBundleSize chuncks.
         // So each beam source will read around desiredBundleSize volume of data.
@@ -540,11 +624,11 @@ public class ElasticsearchIO {
           sources.add(new BoundedElasticsearchSource(spec, shardId, null, null, backendVersion));
         }
         checkArgument(!sources.isEmpty(), "No shard found");
-      } else if (backendVersion == 5) {
+      } else if (backendVersion == 5 || backendVersion == 6) {
         long indexSize = BoundedElasticsearchSource.estimateIndexSize(connectionConfiguration);
         float nbBundlesFloat = (float) indexSize / desiredBundleSizeBytes;
         int nbBundles = (int) Math.ceil(nbBundlesFloat);
-        //ES slice api imposes that the number of slices is <= 1024 even if it can be overloaded
+        // ES slice api imposes that the number of slices is <= 1024 even if it can be overloaded
         if (nbBundles > 1024) {
           nbBundles = 1024;
         }
@@ -573,7 +657,7 @@ public class ElasticsearchIO {
       // as Elasticsearch 2.x doesn't not support any way to do parallel read inside a shard
       // the estimated size bytes is not really used in the split into bundles.
       // However, we implement this method anyway as the runners can use it.
-      // NB: Elasticsearch 5.x now provides the slice API.
+      // NB: Elasticsearch 5.x+ now provides the slice API.
       // (https://www.elastic.co/guide/en/elasticsearch/reference/5.0/search-request-scroll.html
       // #sliced-scroll)
       JsonNode statsJson = getStats(connectionConfiguration, false);
@@ -614,7 +698,7 @@ public class ElasticsearchIO {
       }
       String endpoint = String.format("/%s/_stats", connectionConfiguration.getIndex());
       try (RestClient restClient = connectionConfiguration.createClient()) {
-        return parseResponse(restClient.performRequest("GET", endpoint, params));
+        return parseResponse(restClient.performRequest("GET", endpoint, params).getEntity());
       }
     }
   }
@@ -640,13 +724,14 @@ public class ElasticsearchIO {
       if (query == null) {
         query = "{\"query\": { \"match_all\": {} }}";
       }
-      if (source.backendVersion == 5 && source.numSlices != null && source.numSlices > 1) {
+      if ((source.backendVersion == 5 || source.backendVersion == 6)
+          && source.numSlices != null
+          && source.numSlices > 1) {
         //if there is more than one slice, add the slice to the user query
         String sliceQuery =
             String.format("\"slice\": {\"id\": %s,\"max\": %s}", source.sliceId, source.numSlices);
         query = query.replaceFirst("\\{", "{" + sliceQuery + ",");
       }
-      Response response;
       String endPoint =
           String.format(
               "/%s/%s/_search",
@@ -661,8 +746,8 @@ public class ElasticsearchIO {
         }
       }
       HttpEntity queryEntity = new NStringEntity(query, ContentType.APPLICATION_JSON);
-      response = restClient.performRequest("GET", endPoint, params, queryEntity);
-      JsonNode searchResult = parseResponse(response);
+      Response response = restClient.performRequest("GET", endPoint, params, queryEntity);
+      JsonNode searchResult = parseResponse(response.getEntity());
       updateScrollId(searchResult);
       return readNextBatchAndReturnFirstDocument(searchResult);
     }
@@ -685,7 +770,7 @@ public class ElasticsearchIO {
         Response response =
             restClient.performRequest(
                 "GET", "/_search/scroll", Collections.emptyMap(), scrollEntity);
-        JsonNode searchResult = parseResponse(response);
+        JsonNode searchResult = parseResponse(response.getEntity());
         updateScrollId(searchResult);
         return readNextBatchAndReturnFirstDocument(searchResult);
       }
@@ -805,7 +890,7 @@ public class ElasticsearchIO {
      * the requests to the Elasticsearch server if the {@link RetryConfiguration} permits it.
      */
     @FunctionalInterface
-    interface RetryPredicate extends Predicate<Response>, Serializable {}
+    interface RetryPredicate extends Predicate<HttpEntity>, Serializable {}
 
     /**
      * This is the default predicate used to test if a failed ES operation should be retried. A
@@ -826,9 +911,9 @@ public class ElasticsearchIO {
       }
 
       /** Returns true if the response has the error code for any mutation. */
-      private static boolean errorCodePresent(Response response, int errorCode) {
+      private static boolean errorCodePresent(HttpEntity responseEntity, int errorCode) {
         try {
-          JsonNode json = parseResponse(response);
+          JsonNode json = parseResponse(responseEntity);
           if (json.path("errors").asBoolean()) {
             for (JsonNode item : json.path("items")) {
               if (item.findValue("status").asInt() == errorCode) {
@@ -837,14 +922,14 @@ public class ElasticsearchIO {
             }
           }
         } catch (IOException e) {
-          LOG.warn("Could not extract error codes from response {}", response);
+          LOG.warn("Could not extract error codes from responseEntity {}", responseEntity);
         }
         return false;
       }
 
       @Override
-      public boolean test(Response response) {
-        return errorCodePresent(response, errorCode);
+      public boolean test(HttpEntity responseEntity) {
+        return errorCodePresent(responseEntity, errorCode);
       }
     }
   }
@@ -1186,6 +1271,7 @@ public class ElasticsearchIO {
         batch.clear();
         currentBatchSizeBytes = 0;
         Response response;
+        HttpEntity responseEntity;
         // Elasticsearch will default to the index/type provided here if none are set in the
         // document meta (i.e. using ElasticsearchIO$Write#withIndexFn and
         // ElasticsearchIO$Write#withTypeFn options)
@@ -1197,18 +1283,20 @@ public class ElasticsearchIO {
         HttpEntity requestBody =
             new NStringEntity(bulkRequest.toString(), ContentType.APPLICATION_JSON);
         response = restClient.performRequest("POST", endPoint, Collections.emptyMap(), requestBody);
+        responseEntity = new BufferedHttpEntity(response.getEntity());
         if (spec.getRetryConfiguration() != null
-            && spec.getRetryConfiguration().getRetryPredicate().test(response)) {
-          response = handleRetry("POST", endPoint, Collections.emptyMap(), requestBody);
+            && spec.getRetryConfiguration().getRetryPredicate().test(responseEntity)) {
+          responseEntity = handleRetry("POST", endPoint, Collections.emptyMap(), requestBody);
         }
-        checkForErrors(response, backendVersion);
+        checkForErrors(responseEntity, backendVersion);
       }
 
       /** retry request based on retry configuration policy. */
-      private Response handleRetry(
+      private HttpEntity handleRetry(
           String method, String endpoint, Map<String, String> params, HttpEntity requestBody)
           throws IOException, InterruptedException {
         Response response;
+        HttpEntity responseEntity;
         Sleeper sleeper = Sleeper.DEFAULT;
         BackOff backoff = retryBackoff.backoff();
         int attempt = 0;
@@ -1216,9 +1304,10 @@ public class ElasticsearchIO {
         while (BackOffUtils.next(sleeper, backoff)) {
           LOG.warn(String.format(RETRY_ATTEMPT_LOG, ++attempt));
           response = restClient.performRequest(method, endpoint, params, requestBody);
+          responseEntity = new BufferedHttpEntity(response.getEntity());
           //if response has no 429 errors
-          if (!spec.getRetryConfiguration().getRetryPredicate().test(response)) {
-            return response;
+          if (!spec.getRetryConfiguration().getRetryPredicate().test(responseEntity)) {
+            return responseEntity;
           }
         }
         throw new IOException(String.format(RETRY_FAILED_LOG, attempt));
@@ -1236,19 +1325,19 @@ public class ElasticsearchIO {
   static int getBackendVersion(ConnectionConfiguration connectionConfiguration) {
     try (RestClient restClient = connectionConfiguration.createClient()) {
       Response response = restClient.performRequest("GET", "");
-      JsonNode jsonNode = parseResponse(response);
+      JsonNode jsonNode = parseResponse(response.getEntity());
       int backendVersion =
           Integer.parseInt(jsonNode.path("version").path("number").asText().substring(0, 1));
       checkArgument(
-          (backendVersion == 2 || backendVersion == 5),
+          (backendVersion == 2 || backendVersion == 5 || backendVersion == 6),
           "The Elasticsearch version to connect to is %s.x. "
               + "This version of the ElasticsearchIO is only compatible with "
-              + "Elasticsearch v5.x and v2.x",
+              + "Elasticsearch v6.x, v5.x and v2.x",
           backendVersion);
       return backendVersion;
 
     } catch (IOException e) {
-      throw (new IllegalArgumentException("Cannot get Elasticsearch version"));
+      throw new IllegalArgumentException("Cannot get Elasticsearch version", e);
     }
   }
 }

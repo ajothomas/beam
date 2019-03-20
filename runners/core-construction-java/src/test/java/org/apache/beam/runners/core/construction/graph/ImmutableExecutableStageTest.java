@@ -33,6 +33,7 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.FunctionSpec;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PCollection;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
 import org.apache.beam.model.pipeline.v1.RunnerApi.ParDoPayload;
+import org.apache.beam.runners.core.construction.Environments;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
 import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
 import org.junit.Test;
@@ -44,7 +45,7 @@ import org.junit.runners.JUnit4;
 public class ImmutableExecutableStageTest {
   @Test
   public void ofFullComponentsOnlyHasStagePTransforms() throws Exception {
-    Environment env = Environment.newBuilder().setUrl("foo").build();
+    Environment env = Environments.createDockerEnvironment("foo");
     PTransform pt =
         PTransform.newBuilder()
             .putInputs("input", "input.out")
@@ -87,8 +88,7 @@ public class ImmutableExecutableStageTest {
     UserStateReference userStateRef =
         UserStateReference.of(
             transformNode, "user_state", PipelineNode.pCollection("input.out", input));
-    TimerReference timerRef =
-        TimerReference.of(transformNode, "timer", PipelineNode.pCollection("timer.pc", timer));
+    TimerReference timerRef = TimerReference.of(transformNode, "timer");
     ImmutableExecutableStage stage =
         ImmutableExecutableStage.ofFullComponents(
             components,

@@ -22,7 +22,6 @@ import static org.apache.beam.sdk.io.solr.SolrIOTestUtils.namedThreadIsAlive;
 
 import com.carrotsearch.ant.tasks.junit4.dependencies.com.google.common.collect.ImmutableSet;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.google.common.io.BaseEncoding;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.List;
@@ -36,6 +35,7 @@ import org.apache.beam.sdk.transforms.Count;
 import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFnTester;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.io.BaseEncoding;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -71,6 +71,7 @@ public class SolrIOTest extends SolrCloudTestCase {
   private static final long NUM_DOCS = 400L;
   private static final int NUM_SCIENTISTS = 10;
   private static final int BATCH_SIZE = 200;
+  private static final int DEFAULT_BATCH_SIZE = 1000;
 
   private static AuthorizedSolrClient<CloudSolrClient> solrClient;
   private static SolrIO.ConnectionConfiguration connectionConfiguration;
@@ -316,5 +317,17 @@ public class SolrIOTest extends SolrCloudTestCase {
     assertFalse(
         DEFAULT_RETRY_PREDICATE.test(
             new SolrException(SolrException.ErrorCode.UNSUPPORTED_MEDIA_TYPE, "test")));
+  }
+
+  /** Tests batch size default and changed value. */
+  @Test
+  public void testBatchSize() {
+    SolrIO.Write write1 =
+        SolrIO.write()
+            .withConnectionConfiguration(connectionConfiguration)
+            .withMaxBatchSize(BATCH_SIZE);
+    assertTrue(write1.getMaxBatchSize() == BATCH_SIZE);
+    SolrIO.Write write2 = SolrIO.write().withConnectionConfiguration(connectionConfiguration);
+    assertTrue(write2.getMaxBatchSize() == DEFAULT_BATCH_SIZE);
   }
 }

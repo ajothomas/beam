@@ -17,7 +17,6 @@
  */
 package org.apache.beam.examples.complete;
 
-import com.google.common.base.Optional;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -57,6 +56,7 @@ import org.apache.beam.sdk.values.PCollectionList;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PDone;
 import org.apache.beam.sdk.values.TupleTag;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.base.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -415,8 +415,7 @@ public class TfIdf {
     }
   }
 
-  public static void main(String[] args) throws Exception {
-    Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
+  static void runTfIdf(Options options) throws Exception {
     Pipeline pipeline = Pipeline.create(options);
     pipeline.getCoderRegistry().registerCoderForClass(URI.class, StringDelegateCoder.of(URI.class));
 
@@ -426,5 +425,11 @@ public class TfIdf {
         .apply(new WriteTfIdf(options.getOutput()));
 
     pipeline.run().waitUntilFinish();
+  }
+
+  public static void main(String[] args) throws Exception {
+    Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
+
+    runTfIdf(options);
   }
 }

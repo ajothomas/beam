@@ -106,6 +106,14 @@ class _BeamArgumentParser(argparse.ArgumentParser):
     # have add_argument do most of the work
     self.add_argument(*args, **kwargs)
 
+  # The argparse package by default tries to autocomplete option names. This
+  # results in an "ambiguous option" error from argparse when an unknown option
+  # matching multiple known ones are used. This suppresses that behavior.
+  def error(self, message):
+    if message.startswith('ambiguous option: '):
+      return
+    super(_BeamArgumentParser, self).error(message)
+
 
 class PipelineOptions(HasDisplayData):
   """Pipeline options class used as container for command line options.
@@ -217,7 +225,7 @@ class PipelineOptions(HasDisplayData):
     result = vars(known_args)
 
     # Apply the overrides if any
-    for k in result.keys():
+    for k in list(result):
       if k in self._all_options:
         result[k] = self._all_options[k]
       if (drop_default and
@@ -240,7 +248,7 @@ class PipelineOptions(HasDisplayData):
                   for option in dir(self._visible_options) if option[0] != '_')
 
   def __dir__(self):
-    return sorted(dir(type(self)) + list(self.__dict__.keys()) +
+    return sorted(dir(type(self)) + list(self.__dict__) +
                   self._visible_option_list())
 
   def __getattr__(self, name):
@@ -321,6 +329,12 @@ class DirectOptions(PipelineOptions):
         help='DirectRunner uses stacked WindowedValues within a Bundle for '
         'memory optimization. Set --no_direct_runner_use_stacked_bundle to '
         'avoid it.')
+    parser.add_argument(
+        '--direct_runner_bundle_repeat',
+        type=int,
+        default=0,
+        help='replay every bundle this many extra times, for profiling'
+        'and debugging')
 
 
 class GoogleCloudOptions(PipelineOptions):
@@ -375,13 +389,20 @@ class GoogleCloudOptions(PipelineOptions):
     parser.add_argument('--template_location',
                         default=None,
                         help='Save job to specified local or GCS location.')
-    parser.add_argument(
-        '--label', '--labels',
-        dest='labels',
-        action='append',
-        default=None,
-        help='Labels that will be applied to this Dataflow job. Labels are key '
-        'value pairs separated by = (e.g. --label key=value).')
+    parser.add_argument('--label', '--labels',
+                        dest='labels',
+                        action='append',
+                        default=None,
+                        help='Labels to be applied to this Dataflow job. '
+                        'Labels are key value pairs separated by = '
+                        '(e.g. --label key=value).')
+    parser.add_argument('--update',
+                        default=False,
+                        action='store_true',
+                        help='Update an existing streaming Cloud Dataflow job. '
+                        'Experimental. '
+                        'See https://cloud.google.com/dataflow/pipelines/'
+                        'updating-a-pipeline')
 
   def validate(self, validator):
     errors = []
@@ -514,6 +535,20 @@ class WorkerOptions(PipelineOptions):
         default=None,
         action='store_false',
         help='Whether to assign only private IP addresses to the worker VMs.')
+    parser.add_argument(
+        '--min_cpu_platform',
+        dest='min_cpu_platform',
+        type=str,
+        help='GCE minimum CPU platform. Default is determined by GCP.'
+    )
+    parser.add_argument(
+        '--dataflow_worker_jar',
+        dest='dataflow_worker_jar',
+        type=str,
+        help='Dataflow worker jar file. If specified, the jar file is staged '
+             'in GCS, then gets loaded by workers. End users usually '
+             'should not use this feature.'
+    )
 
   def validate(self, validator):
     errors = []
@@ -553,7 +588,12 @@ class ProfilingOptions(PipelineOptions):
                         help='Enable work item heap profiling.')
     parser.add_argument('--profile_location',
                         default=None,
-                        help='GCS path for saving profiler data.')
+                        help='path for saving profiler data.')
+    parser.add_argument('--profile_sample_rate',
+                        type=float,
+                        default=1.0,
+                        help='A number between 0 and 1 indicating the ratio '
+                        'of bundles that should be profiled.')
 
 
 class SetupOptions(PipelineOptions):
@@ -649,11 +689,49 @@ class PortableOptions(PipelineOptions):
                         help=
                         ('Job service endpoint to use. Should be in the form '
                          'of address and port, e.g. localhost:3000'))
-    parser.add_argument('--harness_docker_image',
-                        default=None,
+    parser.add_argument(
+        '--environment_type', default=None,
+        help=('Set the default environment type for running '
+              'user code. Possible options are DOCKER and PROCESS.'))
+    parser.add_argument(
+        '--environment_config', default=None,
+        help=('Set environment configuration for running the user code.\n For '
+              'DOCKER: Url for the docker image.\n For PROCESS: json of the '
+              'form {"os": "<OS>", "arch": "<ARCHITECTURE>", "command": '
+              '"<process to execute>", "env":{"<Environment variables 1>": '
+              '"<ENV_VAL>"} }. All fields in the json are optional except '
+              'command.'))
+    parser.add_argument(
+        '--environment_cache_millis', default=0,
+        help=('Duration in milliseconds for environment cache within a job. '
+              '0 means no caching.'))
+
+
+class FlinkOptions(PipelineOptions):
+
+  @classmethod
+  def _add_argparse_args(cls, parser):
+    parser.add_argument('--flink_master',
+                        type=str,
                         help=
-                        ('Docker image to use for executing Python code '
-                         'in the pipeline when running using the Fn API.'))
+                        ('Address of the Flink master where the pipeline '
+                         'should be executed. Can either be of the form '
+                         '\'host:port\' or one of the special values '
+                         '[local], [collection], or [auto].'))
+    parser.add_argument('--parallelism',
+                        type=int,
+                        help=
+                        ('The degree of parallelism to be used when '
+                         'distributing operations onto workers.'))
+    parser.add_argument('--shutdown_sources_on_final_watermark',
+                        default=False,
+                        action='store_true',
+                        help=
+                        ('If set to true, allows sources to shutdown '
+                         'after emitting the final Watermark. '
+                         'Note: Checkpoints/Savepoints can only be '
+                         'taken when all operators, including sources, '
+                         'are running.'))
 
 
 class TestOptions(PipelineOptions):
@@ -685,6 +763,20 @@ class TestOptions(PipelineOptions):
     if self.view_as(TestOptions).on_success_matcher:
       errors.extend(validator.validate_test_matcher(self, 'on_success_matcher'))
     return errors
+
+
+class TestDataflowOptions(PipelineOptions):
+
+  @classmethod
+  def _add_argparse_args(cls, parser):
+    # This option is passed to Dataflow Runner's Pub/Sub client. The camelCase
+    # style in 'dest' matches the runner's.
+    parser.add_argument(
+        '--pubsub_root_url',
+        dest='pubsubRootUrl',
+        default=None,
+        help='Root URL for use with the Google Cloud Pub/Sub API.',)
+
 
 # TODO(silviuc): Add --files_to_stage option.
 # This could potentially replace the --requirements_file and --setup_file.

@@ -15,13 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.beam.examples.complete.game;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.junit.Assert.assertThat;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.Serializable;
 import org.apache.beam.examples.complete.game.LeaderBoard.CalculateTeamScores;
 import org.apache.beam.examples.complete.game.LeaderBoard.CalculateUserScores;
@@ -38,6 +36,7 @@ import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.TimestampedValue;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableMap;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 import org.junit.Rule;
@@ -352,7 +351,7 @@ public class LeaderBoardTest implements Serializable {
             // allowed lateness, and are taken into account alongside on-time elements
             .addElements(
                 event(TestUser.RED_ONE, 3, Duration.standardMinutes(7)),
-                event(TestUser.RED_ONE, 2, (ALLOWED_LATENESS).plus(Duration.standardHours(13))))
+                event(TestUser.RED_ONE, 2, ALLOWED_LATENESS.plus(Duration.standardHours(13))))
             .advanceProcessingTime(Duration.standardMinutes(6))
             .addElements(event(TestUser.BLUE_TWO, 5, Duration.standardMinutes(12)))
             .advanceProcessingTime(Duration.standardMinutes(20))
