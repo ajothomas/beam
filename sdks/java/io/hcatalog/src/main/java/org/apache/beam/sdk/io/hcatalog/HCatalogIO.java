@@ -266,7 +266,8 @@ public class HCatalogIO {
         return input
             .apply("ConvertToReadRequest", Create.of(this))
             .apply("WatchForNewPartitions", growthFn)
-            .apply("PartitionReader", ParDo.of(new PartitionReaderFn(getConfigProperties())));
+            .apply("PartitionReader", ParDo.of(new PartitionReaderFn(getConfigProperties())))
+            .setCoder((Coder) WritableCoder.of(DefaultHCatRecord.class));
       } else {
         // Treat as Bounded
         checkArgument(
