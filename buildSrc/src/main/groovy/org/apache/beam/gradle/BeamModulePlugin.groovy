@@ -314,7 +314,7 @@ class BeamModulePlugin implements Plugin<Project> {
 
     // Automatically use the official release version if we are performing a release
     // otherwise append '-SNAPSHOT'
-    project.version = '2.14.0'
+    project.version = '2.14.0gd1'
     if (!isRelease(project)) {
       project.version += '-SNAPSHOT'
     }
@@ -558,6 +558,16 @@ class BeamModulePlugin implements Plugin<Project> {
     }
 
     project.ext.repositories = {
+      maven {
+        url(project.properties['distMgmtSnapshotsUrl'] ?: isRelease(project)
+                ? 'https://artifactory.secureserver.net/artifactory/'
+                + 'maven-customerknowledgeplatform-beam-local'
+                : 'https://repository.apache.org/content/repositories/snapshots')
+        credentials {
+          username = System.getenv()['ORG_GRADLE_PROJECT_ARTIFACTORY_USER']
+          password = System.getenv()['ORG_GRADLE_PROJECT_ARTIFACTORY_PASS']
+        }
+      }
       maven {
         name "testPublicationLocal"
         url "file://${project.rootProject.projectDir}/testPublication/"
