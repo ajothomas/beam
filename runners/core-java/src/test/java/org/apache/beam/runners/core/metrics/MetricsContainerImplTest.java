@@ -21,6 +21,7 @@ import static org.apache.beam.runners.core.metrics.MetricUpdateMatchers.metricUp
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.emptyIterable;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.collection.IsIterableContainingInAnyOrder.containsInAnyOrder;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -36,6 +37,7 @@ import java.util.Set;
 import org.apache.beam.model.pipeline.v1.MetricsApi.MonitoringInfo;
 import org.apache.beam.sdk.metrics.MetricName;
 import org.apache.beam.sdk.util.HistogramData;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -120,37 +122,60 @@ public class MetricsContainerImplTest {
         "Initial update includes initial zero-values",
         container.getUpdates().distributionUpdates(),
         containsInAnyOrder(
-            metricUpdate("name1", DistributionData.EMPTY),
-            metricUpdate("name2", DistributionData.EMPTY)));
+            metricUpdate("name1", DistributionData.empty()),
+            metricUpdate("name2", DistributionData.empty())));
+
+    c1.update(5L);
+    c2.update(4L);
+    ImmutableMap<Double, Double> percentile1 =
+        ImmutableMap.<Double, Double>builder()
+            .put(25.0D, 5.0D)
+            .put(50.0D, 5.0D)
+            .put(75.0D, 5.0D)
+            .put(90.0D, 5.0D)
+            .put(95.0D, 5.0D)
+            .put(99.0D, 5.0D)
+            .build();
+    ImmutableMap<Double, Double> percentile2 =
+        ImmutableMap.<Double, Double>builder()
+            .put(25.0D, 4.0D)
+            .put(50.0D, 4.0D)
+            .put(75.0D, 4.0D)
+            .put(90.0D, 4.0D)
+            .put(95.0D, 4.0D)
+            .put(99.0D, 4.0D)
+            .build();
+    assertThat(
+        container.getUpdates().distributionUpdates(),
+        containsInAnyOrder(
+            metricUpdate("name1", DistributionData.create(5, 1, 5, 5, percentile1)),
+            metricUpdate("name2", DistributionData.create(4, 1, 4, 4, percentile2))));
+    assertThat(
+        "Updates stay the same without commit",
+        container.getUpdates().distributionUpdates(),
+        containsInAnyOrder(
+            metricUpdate("name1", DistributionData.create(5, 1, 5, 5, percentile1)),
+            metricUpdate("name2", DistributionData.create(4, 1, 4, 4, percentile2))));
 
     container.commitUpdates();
     assertThat(
         "No updates after commit", container.getUpdates().distributionUpdates(), emptyIterable());
 
-    c1.update(5L);
-    c2.update(4L);
-
-    assertThat(
-        container.getUpdates().distributionUpdates(),
-        containsInAnyOrder(
-            metricUpdate("name1", DistributionData.create(5, 1, 5, 5)),
-            metricUpdate("name2", DistributionData.create(4, 1, 4, 4))));
-    assertThat(
-        "Updates stay the same without commit",
-        container.getUpdates().distributionUpdates(),
-        containsInAnyOrder(
-            metricUpdate("name1", DistributionData.create(5, 1, 5, 5)),
-            metricUpdate("name2", DistributionData.create(4, 1, 4, 4))));
-
-    container.commitUpdates();
-    assertThat(
-        "No updatess after commit", container.getUpdates().distributionUpdates(), emptyIterable());
-
     c1.update(8L);
     c1.update(4L);
+    percentile1 =
+        ImmutableMap.<Double, Double>builder()
+            .put(25.0D, 4.0D)
+            .put(50.0D, 5.0D)
+            .put(75.0D, 8.0D)
+            .put(90.0D, 8.0D)
+            .put(95.0D, 8.0D)
+            .put(99.0D, 8.0D)
+            .build();
+    assertThat(percentile1, equalTo(c1.getCumulative().percentiles()));
     assertThat(
         container.getUpdates().distributionUpdates(),
-        contains(metricUpdate("name1", DistributionData.create(17, 3, 4, 8))));
+        contains(metricUpdate("name1", DistributionData.create(17, 3, 4, 8, percentile1))));
     container.commitUpdates();
 
     DistributionCell dne = container.tryGetDistribution(MetricName.named("ns", "dne"));

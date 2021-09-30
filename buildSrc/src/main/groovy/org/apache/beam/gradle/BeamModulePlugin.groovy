@@ -497,6 +497,7 @@ class BeamModulePlugin implements Plugin<Project> {
         antlr                                       : "org.antlr:antlr4:4.7",
         antlr_runtime                               : "org.antlr:antlr4-runtime:4.7",
         args4j                                      : "args4j:args4j:2.33",
+        assertj                                     : "org.assertj:assertj-core:3.21.0",
         auto_value_annotations                      : "com.google.auto.value:auto-value-annotations:$autovalue_version",
         avro                                        : "org.apache.avro:avro:1.8.2",
         avro_tests                                  : "org.apache.avro:avro:1.8.2:tests",

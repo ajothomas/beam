@@ -38,7 +38,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.apache.beam.model.pipeline.v1.MetricsApi.MonitoringInfo;
 import org.apache.beam.runners.core.metrics.MetricUpdates.MetricUpdate;
-import org.apache.beam.sdk.metrics.Distribution;
 import org.apache.beam.sdk.metrics.Metric;
 import org.apache.beam.sdk.metrics.MetricKey;
 import org.apache.beam.sdk.metrics.MetricName;
@@ -408,10 +407,10 @@ public class MetricsContainerImpl implements Serializable, MetricsContainer {
 
   private void updateForDistributionInt64Type(MonitoringInfo monitoringInfo) {
     MetricName metricName = MonitoringInfoMetricName.of(monitoringInfo);
-    Distribution distribution = getDistribution(metricName);
+    DistributionCell distribution = getDistribution(metricName);
 
     DistributionData data = decodeInt64Distribution(monitoringInfo.getPayload());
-    distribution.update(data.sum(), data.count(), data.min(), data.max());
+    distribution.update(data);
   }
 
   private void updateForLatestInt64Type(MonitoringInfo monitoringInfo) {

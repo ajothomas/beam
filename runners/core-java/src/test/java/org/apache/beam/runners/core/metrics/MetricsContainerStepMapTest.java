@@ -40,6 +40,8 @@ import org.apache.beam.sdk.metrics.MetricResults;
 import org.apache.beam.sdk.metrics.Metrics;
 import org.apache.beam.sdk.metrics.MetricsEnvironment;
 import org.apache.beam.sdk.metrics.MetricsFilter;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
 import org.hamcrest.collection.IsIterableWithSize;
 import org.joda.time.Instant;
 import org.junit.Assert;
@@ -92,7 +94,6 @@ public class MetricsContainerStepMapTest {
     attemptedMetrics.update(STEP2, metricsContainer);
 
     MetricResults metricResults = asAttemptedOnlyMetricResults(attemptedMetrics);
-
     MetricQueryResults step1res =
         metricResults.queryMetrics(MetricsFilter.builder().addStep(STEP1).build());
 
@@ -100,12 +101,21 @@ public class MetricsContainerStepMapTest {
     assertIterableSize(step1res.getDistributions(), 1);
     assertIterableSize(step1res.getGauges(), 1);
 
+    ImmutableMap<Double, Double> percentiles =
+        ImmutableMap.<Double, Double>builder()
+            .put(25.0D, 100.0D)
+            .put(50.0D, 150.0D)
+            .put(75.0D, 200.0D)
+            .put(90.0D, 200.0D)
+            .put(95.0D, 200.0D)
+            .put(99.0D, 200.0D)
+            .build();
     assertCounter(COUNTER_NAME, step1res, STEP1, VALUE, false);
     assertDistribution(
         DISTRIBUTION_NAME,
         step1res,
         STEP1,
-        DistributionResult.create(VALUE * 3, 2, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 3, 2, VALUE, VALUE * 2, percentiles),
         false);
     assertGauge(GAUGE_NAME, step1res, STEP1, GaugeResult.create(VALUE, Instant.now()), false);
 
@@ -121,7 +131,7 @@ public class MetricsContainerStepMapTest {
         DISTRIBUTION_NAME,
         step2res,
         STEP2,
-        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2, percentiles),
         false);
     assertGauge(GAUGE_NAME, step2res, STEP2, GaugeResult.create(VALUE, Instant.now()), false);
 
@@ -184,8 +194,7 @@ public class MetricsContainerStepMapTest {
     CounterCell c1 = testObject.getUnboundContainer().getCounter(MetricName.named("ns", "name1"));
     c1.inc(5);
 
-    List<MonitoringInfo> expected = new ArrayList<MonitoringInfo>();
-    assertThat(testObject.getMonitoringInfos(), containsInAnyOrder(expected.toArray()));
+    assertThat(testObject.getMonitoringInfos(), containsInAnyOrder(ImmutableList.of().toArray()));
   }
 
   @Test
@@ -205,7 +214,7 @@ public class MetricsContainerStepMapTest {
     MetricsContainerStepMap testObject = new MetricsContainerStepMap();
     testObject.updateAll(baseMetricContainerRegistry);
 
-    List<MonitoringInfo> expected = new ArrayList<MonitoringInfo>();
+    List<MonitoringInfo> expected = new ArrayList<>();
 
     SimpleMonitoringInfoBuilder builder = new SimpleMonitoringInfoBuilder();
     builder
@@ -218,7 +227,7 @@ public class MetricsContainerStepMapTest {
 
     expected.add(MonitoringInfoTestUtil.testElementCountMonitoringInfo(14));
 
-    ArrayList<MonitoringInfo> actual = new ArrayList<MonitoringInfo>();
+    ArrayList<MonitoringInfo> actual = new ArrayList<>();
 
     for (MonitoringInfo mi : testObject.getMonitoringInfos()) {
       actual.add(mi);
@@ -250,11 +259,20 @@ public class MetricsContainerStepMapTest {
     assertIterableSize(step1res.getGauges(), 1);
 
     assertCounter(COUNTER_NAME, step1res, STEP1, VALUE * 2, false);
+    ImmutableMap<Double, Double> percentiles =
+        ImmutableMap.<Double, Double>builder()
+            .put(25.0D, 100.0D)
+            .put(50.0D, 150.0D)
+            .put(75.0D, 200.0D)
+            .put(90.0D, 200.0D)
+            .put(95.0D, 200.0D)
+            .put(99.0D, 200.0D)
+            .build();
     assertDistribution(
         DISTRIBUTION_NAME,
         step1res,
         STEP1,
-        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2, percentiles),
         false);
     assertGauge(GAUGE_NAME, step1res, STEP1, GaugeResult.create(VALUE, Instant.now()), false);
 
@@ -263,7 +281,7 @@ public class MetricsContainerStepMapTest {
         DISTRIBUTION_NAME,
         step1res,
         STEP1,
-        DistributionResult.create(VALUE * 3, 2, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 3, 2, VALUE, VALUE * 2, percentiles),
         true);
     assertGauge(GAUGE_NAME, step1res, STEP1, GaugeResult.create(VALUE, Instant.now()), true);
 
@@ -279,7 +297,7 @@ public class MetricsContainerStepMapTest {
         DISTRIBUTION_NAME,
         step2res,
         STEP2,
-        DistributionResult.create(VALUE * 9, 6, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 9, 6, VALUE, VALUE * 2, percentiles),
         false);
     assertGauge(GAUGE_NAME, step2res, STEP2, GaugeResult.create(VALUE, Instant.now()), false);
 
@@ -288,7 +306,7 @@ public class MetricsContainerStepMapTest {
         DISTRIBUTION_NAME,
         step2res,
         STEP2,
-        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2, percentiles),
         true);
     assertGauge(GAUGE_NAME, step2res, STEP2, GaugeResult.create(VALUE, Instant.now()), true);
 
@@ -337,12 +355,22 @@ public class MetricsContainerStepMapTest {
 
     MetricResults metricResults = asAttemptedOnlyMetricResults(attemptedMetrics);
     MetricQueryResults allres = metricResults.allMetrics();
+
+    ImmutableMap<Double, Double> percentiles =
+        ImmutableMap.<Double, Double>builder()
+            .put(25.0D, 100.0D)
+            .put(50.0D, 150.0D)
+            .put(75.0D, 200.0D)
+            .put(90.0D, 200.0D)
+            .put(95.0D, 200.0D)
+            .put(99.0D, 200.0D)
+            .build();
     assertCounter(COUNTER_NAME, allres, STEP1, VALUE, false);
     assertDistribution(
         DISTRIBUTION_NAME,
         allres,
         STEP1,
-        DistributionResult.create(VALUE * 3, 2, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 3, 2, VALUE, VALUE * 2, percentiles),
         false);
     assertGauge(GAUGE_NAME, allres, STEP1, GaugeResult.create(VALUE, Instant.now()), false);
 
@@ -351,7 +379,7 @@ public class MetricsContainerStepMapTest {
         DISTRIBUTION_NAME,
         allres,
         STEP2,
-        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2),
+        DistributionResult.create(VALUE * 6, 4, VALUE, VALUE * 2, percentiles),
         false);
     assertGauge(GAUGE_NAME, allres, STEP2, GaugeResult.create(VALUE, Instant.now()), false);
 

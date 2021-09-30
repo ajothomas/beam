@@ -22,6 +22,7 @@ import static org.apache.beam.runners.core.metrics.MetricsContainerStepMap.asAtt
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.apache.beam.runners.core.metrics.MetricsContainerStepMap;
+import org.apache.beam.sdk.metrics.DistributionResult;
 import org.apache.beam.sdk.metrics.GaugeResult;
 import org.apache.beam.sdk.metrics.MetricQueryResults;
 import org.apache.beam.sdk.metrics.MetricResult;
@@ -42,7 +43,6 @@ import org.apache.samza.metrics.MetricsRegistryMap;
 })
 public class SamzaMetricsContainer {
   private static final String BEAM_METRICS_GROUP = "BeamMetrics";
-  private static final String DELIMITER = "-";
 
   private final MetricsContainerStepMap metricsContainers = new MetricsContainerStepMap();
   private final MetricsRegistryMap metricsRegistry;
@@ -73,7 +73,8 @@ public class SamzaMetricsContainer {
     final GaugeUpdater updateGauge = new GaugeUpdater();
     results.getGauges().forEach(updateGauge);
 
-    // TODO(BEAM-12614): add distribution metrics to Samza
+    final DistributionUpdater updateDistribution = new DistributionUpdater();
+    results.getDistributions().forEach(updateDistribution);
   }
 
   private class CounterUpdater implements Consumer<MetricResult<Long>> {
@@ -99,6 +100,50 @@ public class SamzaMetricsContainer {
         gauge = metricsRegistry.newGauge(BEAM_METRICS_GROUP, metricName, 0L);
       }
       gauge.set(metricResult.getAttempted().getValue());
+    }
+  }
+
+  private class DistributionUpdater implements Consumer<MetricResult<DistributionResult>> {
+    @Override
+    public void accept(MetricResult<DistributionResult> metricResult) {
+      final String metricName = getMetricName(metricResult);
+      final DistributionResult distributionResult = metricResult.getAttempted();
+      setLongGauge(metricName + "Sum", distributionResult.getSum());
+      setLongGauge(metricName + "Count", distributionResult.getCount());
+      setLongGauge(metricName + "Max", distributionResult.getMax());
+      setLongGauge(metricName + "Min", distributionResult.getMin());
+      distributionResult
+          .getPercentiles()
+          .forEach(
+              (percentile, percentileValue) -> {
+                final String percentileSuffix = getStringRepresentationForPercentile(percentile);
+                final String percentileMetricName = metricName + percentileSuffix;
+                @SuppressWarnings("unchecked")
+                Gauge<Double> gauge = (Gauge<Double>) getSamzaMetricFor(percentileMetricName);
+                if (gauge == null) {
+                  gauge = metricsRegistry.newGauge(BEAM_METRICS_GROUP, percentileMetricName, 0.0D);
+                }
+                gauge.set(percentileValue);
+              });
+    }
+
+    private void setLongGauge(String metricName, Long value) {
+      @SuppressWarnings("unchecked")
+      Gauge<Long> gauge = (Gauge<Long>) getSamzaMetricFor(metricName);
+      if (gauge == null) {
+        gauge = metricsRegistry.newGauge(BEAM_METRICS_GROUP, metricName, 0L);
+      }
+      gauge.set(value);
+    }
+
+    private String getStringRepresentationForPercentile(Double value) {
+      String strValue;
+      if (value == value.intValue()) {
+        strValue = String.valueOf(value.intValue());
+      } else {
+        strValue = String.valueOf(value).replace(".", "_");
+      }
+      return "P" + strValue;
     }
   }
 

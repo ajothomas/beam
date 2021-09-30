@@ -21,8 +21,7 @@ import static org.apache.beam.sdk.metrics.MetricResultsMatchers.attemptedMetrics
 import static org.apache.beam.sdk.metrics.MetricResultsMatchers.distributionMinMax;
 import static org.apache.beam.sdk.metrics.MetricResultsMatchers.metricsResult;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.anyOf;
-import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -49,12 +48,14 @@ import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.experimental.runners.Enclosed;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.Mockito;
 
 /** Tests for {@link Metrics}. */
+@RunWith(Enclosed.class)
 public class MetricsTest implements Serializable {
 
   private static final String NS = "test";
@@ -74,9 +75,11 @@ public class MetricsTest implements Serializable {
 
   /** Shared test helpers and setup/teardown. */
   public abstract static class SharedTestBase implements Serializable {
-    @Rule public final transient ExpectedException thrown = ExpectedException.none();
+    @Rule
+    public final transient ExpectedException thrown = ExpectedException.none();
 
-    @Rule public final transient TestPipeline pipeline = TestPipeline.create();
+    @Rule
+    public final transient TestPipeline pipeline = TestPipeline.create();
 
     @After
     public void tearDown() {
@@ -411,7 +414,7 @@ public class MetricsTest implements Serializable {
                 NAMESPACE,
                 "my-gauge",
                 "MyStep2",
-                GaugeResult.create(12L, Instant.now()),
+                GaugeResult.create(1L, Instant.now()),
                 isCommitted)));
   }
 

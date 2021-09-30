@@ -24,7 +24,7 @@ import org.apache.beam.sdk.metrics.MetricName;
 /** Implementation of {@link Distribution}. */
 public class DistributionImpl extends AbstractMetric<DistributionData> implements Distribution {
 
-  private DistributionData distributionData = DistributionData.EMPTY;
+  private DistributionData distributionData = DistributionData.empty();
 
   public DistributionImpl(MetricName name) {
     super(name);
@@ -37,12 +37,7 @@ public class DistributionImpl extends AbstractMetric<DistributionData> implement
 
   @Override
   public void update(long value) {
-    update(DistributionData.singleton(value));
-  }
-
-  @Override
-  public void update(long sum, long count, long min, long max) {
-    update(DistributionData.create(sum, count, min, max));
+    distributionData.update(value);
   }
 
   private void update(DistributionData update) {
